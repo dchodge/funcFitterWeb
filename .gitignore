@@ -1,0 +1,14 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# macOS
+.DS_Store
+__MACOSX/
+
+# Node / build artefacts (if added later)
+node_modules/
+dist/

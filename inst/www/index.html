@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Functional Form Fitter — Bayesian CDF Matching</title>
+<style>
+  /* ── Financial Times × Wes Anderson ── */
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,400&display=swap');
+  :root {
+    /* FT palette */
+    --bg:      #FFF1E0;   /* FT cream */
+    --paper:   #FFF8F0;   /* slightly lighter paper */
+    --card:    #FFFCF8;
+    --border:  #D9C9B0;
+    --rule:    #C9B49A;
+    --text:    #1A1A1A;
+    --sub:     #6B5E4E;
+    --meta:    #9C8878;
+    /* Wes Anderson accents */
+    --wa-rose:    #D4785A;   /* dusty terracotta */
+    --wa-teal:    #5A8F8F;   /* muted teal */
+    --wa-gold:    #C9952A;   /* golden mustard */
+    --wa-lav:     #8A7AAA;   /* cool lavender */
+    --wa-mint:    #6A9E7F;   /* sage green */
+    /* semantic */
+    --accent:  var(--wa-rose);
+    --accent2: var(--wa-teal);
+    --radius: 0px;  /* FT uses sharp corners */
+    --shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    overflow: hidden;  /* no page scroll — columns scroll individually */
+  }
+  body {
+    font-family: 'Source Serif 4', Georgia, serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.55;
+    display: flex;
+    flex-direction: column;
+  }
+  /* ── Header ── */
+  header {
+    background: var(--text);
+    color: var(--bg);
+    padding: 22px 36px 18px;
+    border-bottom: 4px solid var(--wa-gold);
+  }
+  header .eyebrow {
+    font-family: 'Source Serif 4', serif;
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--wa-gold);
+    margin-bottom: 6px;
+  }
+  header h1 {
+    font-family: 'Playfair Display', 'Georgia', serif;
+    font-size: 1.7rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    line-height: 1.15;
+  }
+  header p {
+    font-size: .85rem;
+    color: #C9B49A;
+    margin-top: 5px;
+    font-style: italic;
+  }
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 0;
+    flex: 1;          /* fill remaining body height below header */
+    min-height: 0;    /* allow grid children to shrink */
+    overflow: hidden;
+  }
+  @media(max-width:900px){
+    .layout { grid-template-columns: 1fr; }
+    html, body { overflow: auto; height: auto; }
+    .left-col, .right-col { overflow: visible; height: auto; max-height: none; }
+  }
+  .left-col  {
+    border-right: 1px solid var(--border);
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow-y: auto;
+    height: 100%;
+  }
+  .right-col {
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    overflow-y: auto;
+    height: 100%;
+  }
+  /* ── Cards / sections ── */
+  .card {
+    background: transparent;
+    border-bottom: 1px solid var(--border);
+    padding: 16px 0 18px;
+  }
+  .card:last-child { border-bottom: none; }
+  .card h2 {
+    font-family: 'Source Serif 4', serif;
+    font-size: .68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    color: var(--meta);
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1.5px solid var(--wa-gold);
+    display: inline-block;
+  }
+  /* ── Forms ── */
+  label { display: block; font-size: .78rem; font-weight: 600; margin-bottom: 3px; color: var(--sub); letter-spacing: .02em; }
+  select, input[type=number], input[type=text] {
+    width: 100%; padding: 6px 9px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    font-size: .88rem;
+    font-family: inherit;
+    background: var(--paper);
+    color: var(--text);
+  }
+  select:focus, input:focus {
+    outline: none;
+    border-color: var(--wa-teal);
+    box-shadow: 0 0 0 2px rgba(90,143,143,.18);
+  }
+  .row  { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 11px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 11px; }
+  .mb12 { margin-bottom: 12px; }
+  /* ── Buttons ── */
+  button {
+    padding: 8px 16px; border: 1.5px solid var(--text);
+    border-radius: 2px; font-family: inherit;
+    font-size: .82rem; font-weight: 600; cursor: pointer;
+    transition: background .12s, color .12s;
+    letter-spacing: .03em;
+  }
+  button:hover { background: var(--text); color: var(--bg); }
+  .btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .btn-primary:hover { background: #3A3A3A; }
+  .btn-danger  { background: transparent; color: var(--wa-rose); border-color: var(--wa-rose); padding: 3px 9px; font-size:.76rem; }
+  .btn-danger:hover { background: var(--wa-rose); color: #fff; }
+  .btn-sm      { background: transparent; color: var(--sub); border-color: var(--border); padding: 3px 9px; font-size:.76rem; }
+  .btn-sm:hover { background: var(--sub); color: var(--bg); }
+  /* ── Observations list ── */
+  .obs-list { list-style: none; margin-bottom: 12px; max-height: 200px; overflow-y: auto; }
+  .obs-list li {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 0; border-bottom: 1px solid var(--border);
+    font-size: .84rem;
+  }
+  .obs-list li span { color: var(--sub); font-size: .82rem; }
+  /* ── Priors ── */
+  .prior-row { margin-bottom: 9px; }
+  .prior-row label { font-size: .77rem; color: var(--sub); margin-bottom: 2px; }
+  .prior-row .inline { display: flex; gap: 6px; align-items: center; }
+  .prior-row .inline small { white-space: nowrap; color: var(--meta); font-size: .72rem; }
+  /* ── Status ── */
+  #status { font-size: .8rem; color: var(--meta); margin-top: 8px; min-height: 18px; font-style: italic; }
+  #status.running { color: var(--wa-teal); }
+  #status.done    { color: var(--wa-mint); }
+  #status.error   { color: var(--wa-rose); }
+  /* ── Canvas ── */
+  canvas { width: 100%; display: block; }
+  /* ── Results ── */
+  .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .stat-box { background: var(--paper); padding: 11px 14px; }
+  .stat-box .name { font-size: .68rem; color: var(--meta); font-weight: 600; text-transform: uppercase; letter-spacing: .1em; }
+  .stat-box .val  { font-family: 'Playfair Display', serif; font-size: 1.2rem; font-weight: 700; margin-top: 3px; color: var(--text); }
+  .stat-box .ci   { font-size: .72rem; color: var(--sub); margin-top: 1px; }
+  /* ── Tabs ── */
+  .tab-bar { display: flex; gap: 0; margin-bottom: 0; border-bottom: 2px solid var(--text); }
+  .tab {
+    padding: 7px 16px; cursor: pointer; font-size: .78rem; font-weight: 600;
+    color: var(--meta); border: 1px solid transparent; border-bottom: none;
+    letter-spacing: .05em; text-transform: uppercase;
+    transition: color .12s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .tab-pane { display: none; padding: 16px 0 0; }
+  .tab-pane.active { display: block; }
+  /* ── PDF axis controls ── */
+  .axis-controls {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 8px 0 4px; margin-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .axis-controls label { display: inline; margin: 0; font-size: .72rem; color: var(--sub); }
+  .axis-controls input { width: 80px; padding: 3px 6px; font-size: .8rem; display: inline; }
+  .axis-controls button { padding: 3px 10px; font-size: .72rem; }
+  /* ── Log ── */
+  #logTextarea {
+    width: 100%; height: 100px;
+    font-family: 'Courier New', monospace; font-size: .73rem;
+    background: var(--text); color: #D4B896;
+    border: none; padding: 10px; resize: vertical;
+  }
+  /* ── Misc ── */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+  .help-text { font-size: .79rem; color: var(--sub); line-height: 1.55; font-style: italic; }
+  .right-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Interactive Tool</div>
+  <h1>Functional Form Fitter</h1>
+  <p>Fit probability distributions to cumulative observations via Bayesian inference</p>
+</header>
+
+<div class="layout">
+<!-- ==================== LEFT PANEL ==================== -->
+<div class="left-col">
+
+  <!-- Observations -->
+  <div class="card">
+    <h2>Cumulative Observations</h2>
+    <p class="help-text mb12">Enter known CDF points, e.g. "95% of values are less than 7".</p>
+    <div class="row">
+      <div>
+        <label>Percentile (%)</label>
+        <input type="number" id="inPct" min="0.01" max="99.99" step="0.1" value="95" placeholder="e.g. 95"/>
+      </div>
+      <div>
+        <label>Value (x)</label>
+        <input type="number" id="inVal" step="any" value="7" placeholder="e.g. 7"/>
+      </div>
+    </div>
+    <button class="btn-primary mb12" onclick="addObs()" style="width:100%">+ Add Observation</button>
+    <ul class="obs-list" id="obsList"></ul>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-sm" onclick="loadExample()">Load example data</button>
+      <button class="btn-danger" onclick="clearObs()">Clear all</button>
+    </div>
+  </div>
+
+  <!-- Distribution selection -->
+  <div class="card">
+    <h2>Distribution</h2>
+    <div class="mb12">
+      <label>Family</label>
+      <select id="distSelect" onchange="onDistChange()">
+        <option value="normal">Normal (μ, σ)</option>
+        <option value="lognormal">Log-Normal (μ_log, σ_log)</option>
+        <option value="gamma">Gamma (shape α, rate β)</option>
+        <option value="beta">Beta (α, β)  [0,1] support</option>
+        <option value="weibull">Weibull (shape k, scale λ)</option>
+        <option value="exponential">Exponential (rate λ)</option>
+        <option value="pareto">Pareto (shape α, scale x_m)</option>
+        <option value="logistic">Logistic (μ, s)</option>
+        <option value="cauchy">Cauchy (x₀, γ)</option>
+        <option value="gumbel">Gumbel (μ, β)</option>
+      </select>
+    </div>
+    <div id="distDesc" class="help-text mb12"></div>
+  </div>
+
+  <!-- Priors -->
+  <div class="card">
+    <h2>Parameter Priors</h2>
+    <p class="help-text mb12">Each parameter has a Normal prior N(mean, sd). The sampler works on the unconstrained (log/logit-transformed) space.</p>
+    <div id="priorsPanel"></div>
+  </div>
+
+  <!-- MCMC settings -->
+  <div class="card">
+    <h2>MCMC Settings</h2>
+    <div class="row">
+      <div>
+        <label>Iterations</label>
+        <input type="number" id="mcmcIter" value="20000" min="1000" max="500000"/>
+      </div>
+      <div>
+        <label>Burn-in</label>
+        <input type="number" id="mcmcBurn" value="5000" min="0"/>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Thinning</label>
+        <input type="number" id="mcmcThin" value="5" min="1"/>
+      </div>
+      <div>
+        <label>Proposal σ (step)</label>
+        <input type="number" id="mcmcStep" value="0.15" step="0.01" min="0.001"/>
+      </div>
+    </div>
+    <button class="btn-primary" id="runBtn" onclick="runFit()" style="width:100%;margin-top:4px;">Run Bayesian Fit</button>
+    <div id="status"></div>
+  </div>
+
+</div>
+
+<!-- ==================== RIGHT PANEL ==================== -->
+<div class="right-col">
+
+  <div class="right-card">
+    <div class="tab-bar">
+      <div class="tab active" onclick="showTab('tabCDF')">CDF Fit</div>
+      <div class="tab" onclick="showTab('tabPDF')">PDF / Density</div>
+      <div class="tab" onclick="showTab('tabTrace')">Trace Plots</div>
+      <div class="tab" onclick="showTab('tabPosterior')">Posterior Histograms</div>
+    </div>
+
+    <div id="tabCDF" class="tab-pane active">
+      <canvas id="cdfCanvas" height="320"></canvas>
+    </div>
+    <div id="tabPDF" class="tab-pane">
+      <div class="axis-controls">
+        <label>x min</label>
+        <input type="number" id="pdfXmin" step="any" placeholder="auto" oninput="redrawPDF()"/>
+        <label>x max</label>
+        <input type="number" id="pdfXmax" step="any" placeholder="auto" oninput="redrawPDF()"/>
+        <label>y max</label>
+        <input type="number" id="pdfYmax" step="any" placeholder="auto" min="0" oninput="redrawPDF()"/>
+        <button class="btn-sm" onclick="resetPDFAxes()">Reset</button>
+      </div>
+      <canvas id="pdfCanvas" height="300"></canvas>
+    </div>
+    <div id="tabTrace" class="tab-pane">
+      <canvas id="traceCanvas" height="320"></canvas>
+    </div>
+    <div id="tabPosterior" class="tab-pane">
+      <canvas id="postCanvas" height="320"></canvas>
+    </div>
+  </div>
+
+  <!-- Results summary -->
+  <div class="right-card">
+    <h2>Posterior Summary</h2>
+    <div id="resultsGrid" class="results-grid">
+      <div class="stat-box"><div class="name">Status</div><div class="val" style="font-size:.9rem;font-family:inherit">—</div><div class="ci">Run fit to see results</div></div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="right-card">
+    <h2>Log</h2>
+    <textarea id="logTextarea" readonly></textarea>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Distribution definitions
+// ─────────────────────────────────────────────────────────────────────────────
+const DISTS = {
+  normal: {
+    name: "Normal",
+    params: ["μ (mean)", "σ (std dev)"],
+    keys:   ["mu", "sigma"],
+    transform: ["identity", "log"],   // how to go unconstrained -> constrained: 'identity', 'log', 'logit'
+    defaultPrior: { mu: [0, 10], sigma: [0, 1] },   // [mean_of_log_or_raw, sd_of_log_or_raw]
+    desc: "Symmetric bell curve. μ ∈ ℝ, σ > 0.",
+    cdf(x, p) { return normalCDF((x - p.mu) / p.sigma); },
+    support(p) { const s = Math.abs(p.mu) + 5*p.sigma; return [p.mu - s, p.mu + s]; },
+    pdf(x, p) { const z=(x-p.mu)/p.sigma; return Math.exp(-0.5*z*z)/(p.sigma*Math.sqrt(2*Math.PI)); }
+  },
+  lognormal: {
+    name: "Log-Normal",
+    params: ["μ_log (location)", "σ_log (log-scale)"],
+    keys:   ["mu", "sigma"],
+    transform: ["identity", "log"],
+    defaultPrior: { mu: [0, 2], sigma: [0, 1] },
+    desc: "Skewed, positive-valued. μ_log ∈ ℝ, σ_log > 0.",
+    cdf(x, p) { if(x<=0) return 0; return normalCDF((Math.log(x)-p.mu)/p.sigma); },
+    support(p) { const med=Math.exp(p.mu); return [0, med*Math.exp(4*p.sigma)]; },
+    pdf(x, p) { if(x<=0) return 0; const z=(Math.log(x)-p.mu)/p.sigma; return Math.exp(-0.5*z*z)/(x*p.sigma*Math.sqrt(2*Math.PI)); }
+  },
+  gamma: {
+    name: "Gamma",
+    params: ["α (shape)", "β (rate)"],
+    keys:   ["alpha", "beta"],
+    transform: ["log", "log"],
+    defaultPrior: { alpha: [0, 1], beta: [0, 1] },
+    desc: "Flexible, positive-valued. α > 0, β > 0 (mean = α/β).",
+    cdf(x, p) { if(x<=0) return 0; return incompGamma(p.alpha, p.beta*x); },
+    support(p) { const m=p.alpha/p.beta; return [0, m + 6*Math.sqrt(p.alpha)/p.beta]; },
+    pdf(x, p) { if(x<=0) return 0; return Math.exp((p.alpha-1)*Math.log(x) - p.beta*x - logGamma(p.alpha) + p.alpha*Math.log(p.beta)); }
+  },
+  beta: {
+    name: "Beta",
+    params: ["α (shape1)", "β (shape2)"],
+    keys:   ["alpha", "beta"],
+    transform: ["log", "log"],
+    defaultPrior: { alpha: [0, 1], beta: [0, 1] },
+    desc: "Bounded [0,1]. Use for proportions/probabilities.",
+    cdf(x, p) { if(x<=0) return 0; if(x>=1) return 1; return incompBeta(p.alpha, p.beta, x); },
+    support(p) { return [0, 1]; },
+    pdf(x, p) { if(x<=0||x>=1) return 0; return Math.exp((p.alpha-1)*Math.log(x)+(p.beta-1)*Math.log(1-x)-logBeta(p.alpha,p.beta)); }
+  },
+  weibull: {
+    name: "Weibull",
+    params: ["k (shape)", "λ (scale)"],
+    keys:   ["k", "lambda"],
+    transform: ["log", "log"],
+    defaultPrior: { k: [0, 1], lambda: [0, 1] },
+    desc: "Flexible, positive-valued. Used in reliability / survival.",
+    cdf(x, p) { if(x<=0) return 0; return 1-Math.exp(-Math.pow(x/p.lambda, p.k)); },
+    support(p) { return [0, p.lambda * Math.pow(-Math.log(0.001), 1/p.k)]; },
+    pdf(x, p) { if(x<=0) return 0; return (p.k/p.lambda)*Math.pow(x/p.lambda,p.k-1)*Math.exp(-Math.pow(x/p.lambda,p.k)); }
+  },
+  exponential: {
+    name: "Exponential",
+    params: ["λ (rate)"],
+    keys:   ["lambda"],
+    transform: ["log"],
+    defaultPrior: { lambda: [0, 1] },
+    desc: "Memoryless. λ > 0 (mean = 1/λ).",
+    cdf(x, p) { if(x<=0) return 0; return 1-Math.exp(-p.lambda*x); },
+    support(p) { return [0, 6/p.lambda]; },
+    pdf(x, p) { if(x<=0) return 0; return p.lambda*Math.exp(-p.lambda*x); }
+  },
+  pareto: {
+    name: "Pareto",
+    params: ["α (shape)", "x_m (scale/min)"],
+    keys:   ["alpha", "xm"],
+    transform: ["log", "log"],
+    defaultPrior: { alpha: [0, 1], xm: [0, 1] },
+    desc: "Heavy-tailed, x ≥ x_m. Power-law distributions.",
+    cdf(x, p) { if(x<p.xm) return 0; return 1-Math.pow(p.xm/x, p.alpha); },
+    support(p) { return [p.xm, p.xm * Math.pow(1000, 1/p.alpha)]; },
+    pdf(x, p) { if(x<p.xm) return 0; return p.alpha*Math.pow(p.xm,p.alpha)/Math.pow(x,p.alpha+1); }
+  },
+  logistic: {
+    name: "Logistic",
+    params: ["μ (location)", "s (scale)"],
+    keys:   ["mu", "s"],
+    transform: ["identity", "log"],
+    defaultPrior: { mu: [0, 5], s: [0, 1] },
+    desc: "Like Normal but heavier tails. μ ∈ ℝ, s > 0.",
+    cdf(x, p) { return 1/(1+Math.exp(-(x-p.mu)/p.s)); },
+    support(p) { return [p.mu - 8*p.s, p.mu + 8*p.s]; },
+    pdf(x, p) { const e=Math.exp(-(x-p.mu)/p.s); return e/(p.s*(1+e)*(1+e)); }
+  },
+  cauchy: {
+    name: "Cauchy",
+    params: ["x₀ (location)", "γ (scale)"],
+    keys:   ["x0", "gamma"],
+    transform: ["identity", "log"],
+    defaultPrior: { x0: [0, 5], gamma: [0, 1] },
+    desc: "Very heavy tails (undefined mean/variance). x₀ ∈ ℝ, γ > 0.",
+    cdf(x, p) { return 0.5 + Math.atan((x-p.x0)/p.gamma)/Math.PI; },
+    support(p) { return [p.x0 - 20*p.gamma, p.x0 + 20*p.gamma]; },
+    pdf(x, p) { return 1/(Math.PI*p.gamma*(1+Math.pow((x-p.x0)/p.gamma,2))); }
+  },
+  gumbel: {
+    name: "Gumbel",
+    params: ["μ (location)", "β (scale)"],
+    keys:   ["mu", "beta"],
+    transform: ["identity", "log"],
+    defaultPrior: { mu: [0, 5], beta: [0, 1] },
+    desc: "Extreme value type I. μ ∈ ℝ, β > 0.",
+    cdf(x, p) { return Math.exp(-Math.exp(-(x-p.mu)/p.beta)); },
+    support(p) { return [p.mu - 3*p.beta, p.mu + 8*p.beta]; },
+    pdf(x, p) { const z=(x-p.mu)/p.beta; return (1/p.beta)*Math.exp(-z-Math.exp(-z)); }
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mathematical helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function normalCDF(z) {
+  // Abramowitz & Stegun approximation — max error 7.5e-8
+  const sign = z < 0 ? -1 : 1;
+  const x = Math.abs(z) / Math.SQRT2;
+  const t = 1/(1+0.3275911*x);
+  const poly = t*(0.254829592 + t*(-0.284496736 + t*(1.421413741 + t*(-1.453152027 + t*1.061405429))));
+  return 0.5*(1 + sign*(1 - poly*Math.exp(-x*x)));
+}
+function normalPDF(z) { return Math.exp(-0.5*z*z)/Math.sqrt(2*Math.PI); }
+function logNormalPDF_log(z) { return -0.5*z*z - 0.5*Math.log(2*Math.PI); }
+
+// Log gamma via Lanczos
+const LG_g = 7, LG_c = [0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+function logGamma(z) {
+  if (z < 0.5) return Math.log(Math.PI) - Math.log(Math.sin(Math.PI*z)) - logGamma(1-z);
+  z -= 1;
+  let x = LG_c[0];
+  for (let i = 1; i < LG_g+2; i++) x += LG_c[i]/(z+i);
+  const t = z + LG_g + 0.5;
+  return 0.5*Math.log(2*Math.PI) + (z+0.5)*Math.log(t) - t + Math.log(x);
+}
+function logBeta(a, b) { return logGamma(a) + logGamma(b) - logGamma(a+b); }
+
+// Regularised incomplete gamma (series expansion)
+function incompGamma(a, x) {
+  if (x < 0) return 0;
+  if (x === 0) return 0;
+  if (x > a + 1) return 1 - incompGammaUpper(a, x);
+  let sum = 1/a, term = sum;
+  for (let n = 1; n < 200; n++) {
+    term *= x/(a+n); sum += term;
+    if (Math.abs(term) < 1e-12 * Math.abs(sum)) break;
+  }
+  return Math.min(1, sum * Math.exp(-x + a*Math.log(x) - logGamma(a)));
+}
+function incompGammaUpper(a, x) {
+  let f=1+(x-a-1)/(x+1), c=f, d=0, delta;
+  for (let i=1; i<200; i++) {
+    const ai = i*(a-i), bi = (x+(2*i+1)-a);
+    d = bi + ai*d; if(Math.abs(d)<1e-30) d=1e-30; d=1/d;
+    c = bi + ai/c; if(Math.abs(c)<1e-30) c=1e-30;
+    delta = c*d; f *= delta;
+    if(Math.abs(delta-1)<1e-12) break;
+  }
+  return Math.exp(-x + a*Math.log(x) - logGamma(a)) / f;
+}
+
+// Regularised incomplete beta (continued-fraction via Lentz)
+function incompBeta(a, b, x) {
+  if (x <= 0) return 0; if (x >= 1) return 1;
+  if (x > (a+1)/(a+b+2)) return 1 - incompBeta(b, a, 1-x);
+  const lbeta = logBeta(a,b);
+  const front = Math.exp(Math.log(x)*a + Math.log(1-x)*b - lbeta) / a;
+  // Lentz
+  let f=1, c=1, d=1-(a+b)*x/(a+1); if(Math.abs(d)<1e-30)d=1e-30; d=1/d; f=d;
+  for (let m=1; m<=200; m++) {
+    // even step
+    let num = m*(b-m)*x/((a+2*m-1)*(a+2*m));
+    d = 1+num*d; if(Math.abs(d)<1e-30)d=1e-30; d=1/d;
+    c = 1+num/c; if(Math.abs(c)<1e-30)c=1e-30;
+    f *= c*d;
+    // odd step
+    num = -(a+m)*(a+b+m)*x/((a+2*m)*(a+2*m+1));
+    d = 1+num*d; if(Math.abs(d)<1e-30)d=1e-30; d=1/d;
+    c = 1+num/c; if(Math.abs(c)<1e-30)c=1e-30;
+    const delta = c*d; f *= delta;
+    if(Math.abs(delta-1)<1e-12) break;
+  }
+  return front * f;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+let observations = []; // [{pct, val}]
+let posteriorSamples = null; // [{mu:..., sigma:...}, ...]
+let currentDist = "normal";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function log(msg) {
+  const ta = document.getElementById('logTextarea');
+  ta.value += msg + '\n';
+  ta.scrollTop = ta.scrollHeight;
+}
+function setStatus(msg, cls) {
+  const el = document.getElementById('status');
+  el.textContent = msg; el.className = cls || '';
+}
+function showTab(id) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const tabs = document.querySelectorAll('.tab');
+  const ids = ['tabCDF','tabPDF','tabTrace','tabPosterior'];
+  tabs[ids.indexOf(id)].classList.add('active');
+}
+
+function addObs() {
+  const pct = parseFloat(document.getElementById('inPct').value);
+  const val = parseFloat(document.getElementById('inVal').value);
+  if (isNaN(pct) || isNaN(val) || pct <= 0 || pct >= 100) {
+    alert('Percentile must be between 0 and 100 (exclusive)'); return;
+  }
+  observations.push({pct, val});
+  observations.sort((a,b) => a.val - b.val);
+  renderObsList();
+}
+
+function removeObs(i) { observations.splice(i,1); renderObsList(); }
+function clearObs() { observations = []; renderObsList(); }
+
+function renderObsList() {
+  const ul = document.getElementById('obsList');
+  ul.innerHTML = '';
+  observations.forEach((o, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>P(X ≤ <b>${o.val}</b>) = <b>${o.pct}%</b></span>
+      <button class="btn-danger" onclick="removeObs(${i})">✕</button>`;
+    ul.appendChild(li);
+  });
+}
+
+function loadExample() {
+  observations = [
+    {pct:25, val:8},
+    {pct:50, val:15},
+    {pct:75, val:25},
+    {pct:90, val:40},
+    {pct:95, val:55},
+    {pct:99, val:90}
+  ];
+  // Switch to gamma which matches this
+  document.getElementById('distSelect').value = 'gamma';
+  onDistChange();
+  renderObsList();
+  log("Loaded example data (Gamma-like: 25th=8, 50th=15, 75th=25, 90th=40, 95th=55, 99th=90)");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Distribution & priors panel
+// ─────────────────────────────────────────────────────────────────────────────
+const PRIOR_LABELS = {
+  identity: "N(μ, σ) on raw value",
+  log:      "N(μ, σ) on log(param)",
+  logit:    "N(μ, σ) on logit(param)"
+};
+
+function onDistChange() {
+  currentDist = document.getElementById('distSelect').value;
+  const d = DISTS[currentDist];
+  document.getElementById('distDesc').textContent = d.desc;
+  buildPriorsPanel(d);
+}
+
+function buildPriorsPanel(d) {
+  const panel = document.getElementById('priorsPanel');
+  panel.innerHTML = '';
+  d.keys.forEach((key, i) => {
+    const tf = d.transform[i];
+    const [pm, ps] = d.defaultPrior[key];
+    const div = document.createElement('div');
+    div.className = 'prior-row mb12';
+    div.innerHTML = `
+      <label>${d.params[i]} &nbsp;<small style="font-weight:normal;color:var(--sub)">[${PRIOR_LABELS[tf]}]</small></label>
+      <div class="inline">
+        <small>μ =</small>
+        <input type="number" id="prior_${key}_mean" value="${pm}" step="any" style="width:90px"/>
+        <small>σ =</small>
+        <input type="number" id="prior_${key}_sd"   value="${ps}" step="any" style="width:80px" min="0.001"/>
+      </div>`;
+    panel.appendChild(div);
+  });
+  // Also redraw empty canvases with placeholder
+  drawPlaceholder('cdfCanvas', 'Add observations and run fit');
+  drawPlaceholder('pdfCanvas', 'Add observations and run fit');
+  drawPlaceholder('traceCanvas', 'Add observations and run fit');
+  drawPlaceholder('postCanvas', 'Add observations and run fit');
+}
+
+function getPriors(d) {
+  return d.keys.map((key, i) => ({
+    key,
+    transform: d.transform[i],
+    mean: parseFloat(document.getElementById(`prior_${key}_mean`).value),
+    sd:   parseFloat(document.getElementById(`prior_${key}_sd`).value)
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parameter (un)constrained transforms
+// ─────────────────────────────────────────────────────────────────────────────
+function toUnconstrained(val, tf) {
+  if (tf === 'log')   return Math.log(val);
+  if (tf === 'logit') return Math.log(val/(1-val));
+  return val;
+}
+function toConstrained(u, tf) {
+  if (tf === 'log')   return Math.exp(u);
+  if (tf === 'logit') return 1/(1+Math.exp(-u));
+  return u;
+}
+function logJacobian(u, tf) {
+  // log |d(constrained)/d(unconstrained)| — needed for correct posterior
+  if (tf === 'log')   return u;   // log(exp(u)) = u
+  if (tf === 'logit') { const p=1/(1+Math.exp(-u)); return Math.log(p) + Math.log(1-p); }
+  return 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Log-posterior computation (working in unconstrained space)
+// ─────────────────────────────────────────────────────────────────────────────
+function logPosterior(theta_u, d, priors, obs) {
+  // Convert unconstrained -> constrained
+  const params = {};
+  let lp = 0;
+  for (let i = 0; i < priors.length; i++) {
+    const {key, transform, mean, sd} = priors[i];
+    const u = theta_u[i];
+    // Prior on unconstrained value
+    const z = (u - mean) / sd;
+    lp += -0.5*z*z - Math.log(sd); // log N(u; mean, sd) ignoring const
+    // Jacobian
+    lp += logJacobian(u, transform);
+    const cv = toConstrained(u, transform);
+    if (!isFinite(cv) || cv <= 0 && (transform === 'log')) return -Infinity;
+    params[key] = cv;
+  }
+  // Likelihood: each observation is an exact CDF constraint
+  // We use a smooth likelihood: loglik = sum of log(dnorm(logit(F(x_i)) - logit(p_i), 0, epsilon))
+  // This penalises deviation of F(x_i) from p_i
+  const EPS = 0.5; // tolerance in logit space (~how sharp the likelihood is)
+  for (const ob of obs) {
+    const p_obs = ob.pct / 100;
+    let cdf_val;
+    try { cdf_val = d.cdf(ob.val, params); } catch(e) { return -Infinity; }
+    if (!isFinite(cdf_val)) return -Infinity;
+    // Clamp to avoid logit blow-up
+    const c = Math.max(1e-9, Math.min(1-1e-9, cdf_val));
+    const p = Math.max(1e-9, Math.min(1-1e-9, p_obs));
+    const logit_c = Math.log(c/(1-c));
+    const logit_p = Math.log(p/(1-p));
+    const diff = logit_c - logit_p;
+    lp += -0.5*(diff/EPS)*(diff/EPS);
+  }
+  return lp;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Metropolis-Hastings MCMC sampler
+// ─────────────────────────────────────────────────────────────────────────────
+function runMCMC(d, priors, obs, nIter, burnIn, thin, stepSd) {
+  const dim = priors.length;
+  // Initialise at prior means
+  let theta = priors.map(p => p.mean);
+  let logP = logPosterior(theta, d, priors, obs);
+
+  // If initial point is -Inf, try to find better start
+  if (!isFinite(logP)) {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      theta = priors.map(p => p.mean + (Math.random()-0.5)*p.sd*2);
+      logP = logPosterior(theta, d, priors, obs);
+      if (isFinite(logP)) break;
+    }
+  }
+
+  const samples = [];
+  let accepted = 0;
+
+  // Adaptive step: track per-dim variance of accepted proposals
+  const stepSds = new Array(dim).fill(stepSd);
+
+  for (let iter = 0; iter < nIter; iter++) {
+    // Random-walk proposal (independent per dimension for simplicity)
+    const proposal = theta.map((t, i) => t + stepSds[i] * randn());
+    const logP_prop = logPosterior(proposal, d, priors, obs);
+    const logAlpha = logP_prop - logP;
+    if (Math.log(Math.random()) < logAlpha) {
+      theta = proposal;
+      logP = logP_prop;
+      accepted++;
+    }
+    // Collect post burn-in thinned samples
+    if (iter >= burnIn && (iter - burnIn) % thin === 0) {
+      const samp = {_logP: logP};
+      priors.forEach((p, i) => { samp[p.key] = toConstrained(theta[i], p.transform); });
+      samples.push(samp);
+    }
+    // Dual-averaging step size adaptation (every 100 iters during burn-in)
+    if (iter < burnIn && iter % 100 === 99) {
+      const rate = accepted / (iter+1);
+      const scale = rate < 0.15 ? 0.7 : (rate > 0.5 ? 1.3 : 1.0);
+      for (let i=0;i<dim;i++) stepSds[i] = Math.min(5, Math.max(0.001, stepSds[i]*scale));
+    }
+  }
+
+  const acceptRate = accepted / nIter;
+  return {samples, acceptRate, stepSds};
+}
+
+// Simple Box-Muller
+function randn() {
+  let u, v;
+  do { u = Math.random(); } while(u === 0);
+  v = Math.random();
+  return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main fit entry point
+// ─────────────────────────────────────────────────────────────────────────────
+function runFit() {
+  if (observations.length < 1) { alert('Add at least one observation first.'); return; }
+
+  const d = DISTS[currentDist];
+  const priors = getPriors(d);
+  const nIter = parseInt(document.getElementById('mcmcIter').value);
+  const burnIn = parseInt(document.getElementById('mcmcBurn').value);
+  const thin   = parseInt(document.getElementById('mcmcThin').value);
+  const step   = parseFloat(document.getElementById('mcmcStep').value);
+
+  document.getElementById('runBtn').disabled = true;
+  setStatus('Running MCMC…', 'running');
+  document.getElementById('logTextarea').value = '';
+  log(`Distribution: ${d.name}`);
+  log(`Observations: ${observations.length}`);
+  log(`Iterations: ${nIter}, burn-in: ${burnIn}, thin: ${thin}`);
+  log('Sampling…');
+
+  // Defer to allow UI repaint
+  setTimeout(() => {
+    try {
+      const t0 = performance.now();
+      const result = runMCMC(d, priors, observations, nIter, burnIn, thin, step);
+      const elapsed = ((performance.now()-t0)/1000).toFixed(2);
+
+      posteriorSamples = result.samples;
+      log(`Done in ${elapsed}s. Effective samples: ${posteriorSamples.length}. Accept rate: ${(result.acceptRate*100).toFixed(1)}%`);
+
+      if (result.acceptRate < 0.1) log('⚠ Low acceptance rate — consider increasing proposal σ or checking priors.');
+      if (result.acceptRate > 0.7) log('⚠ High acceptance rate — chain may mix slowly; try reducing proposal σ.');
+
+      renderResults(d, priors);
+      drawCDF(d);
+      drawPDF(d);
+      drawTrace(priors);
+      drawPosteriorHist(priors);
+      setStatus(`Fit complete — ${posteriorSamples.length} posterior samples (${elapsed}s)`, 'done');
+    } catch(e) {
+      setStatus('Error: ' + e.message, 'error');
+      log('ERROR: ' + e.message);
+    }
+    document.getElementById('runBtn').disabled = false;
+  }, 30);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Posterior summary
+// ─────────────────────────────────────────────────────────────────────────────
+function quantile(arr, q) {
+  const sorted = [...arr].sort((a,b) => a-b);
+  const pos = q * (sorted.length - 1);
+  const lo = Math.floor(pos), hi = Math.ceil(pos);
+  return sorted[lo] + (pos - lo)*(sorted[hi] - sorted[lo]);
+}
+function mean(arr) { return arr.reduce((a,b)=>a+b,0)/arr.length; }
+function std(arr) { const m=mean(arr); return Math.sqrt(arr.reduce((s,v)=>s+(v-m)*(v-m),0)/arr.length); }
+
+function renderResults(d, priors) {
+  const grid = document.getElementById('resultsGrid');
+  grid.innerHTML = '';
+  priors.forEach(p => {
+    const vals = posteriorSamples.map(s => s[p.key]);
+    const mn  = mean(vals);
+    const sd_ = std(vals);
+    const lo  = quantile(vals, 0.025);
+    const hi  = quantile(vals, 0.975);
+    const box = document.createElement('div');
+    box.className = 'stat-box';
+    // find param display name
+    const idx = d.keys.indexOf(p.key);
+    const pname = d.params[idx];
+    box.innerHTML = `<div class="name">${pname}</div>
+      <div class="val">${mn.toPrecision(4)}</div>
+      <div class="ci">± ${sd_.toPrecision(3)} (SD)</div>
+      <div class="ci">95%: [${lo.toPrecision(3)}, ${hi.toPrecision(3)}]</div>`;
+    grid.appendChild(box);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Canvas drawing utilities
+// ─────────────────────────────────────────────────────────────────────────────
+function setupCanvas(id) {
+  const canvas = document.getElementById(id);
+  // High-DPI
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const w = rect.width || canvas.parentElement.clientWidth || 600;
+  const h = parseInt(canvas.getAttribute('height')) || 320;
+  canvas.width  = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width  = w + 'px';
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return {ctx, w, h};
+}
+
+function drawPlaceholder(id, msg) {
+  const {ctx, w, h} = setupCanvas(id);
+  ctx.fillStyle = '#FFF8F0';
+  ctx.fillRect(0,0,w,h);
+  // Light horizontal rule
+  ctx.strokeStyle = '#D9C9B0'; ctx.lineWidth = 0.5;
+  for (let y = 40; y < h; y += 32) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  ctx.fillStyle = '#9C8878';
+  ctx.font = 'italic 13px "Source Serif 4", Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(msg, w/2, h/2);
+}
+
+const PAD = {top:20, right:20, bottom:45, left:55};
+
+function worldToCanvas(x, y, xMin, xMax, yMin, yMax, w, h) {
+  const px = PAD.left + (x-xMin)/(xMax-xMin)*(w-PAD.left-PAD.right);
+  const py = PAD.top  + (1-(y-yMin)/(yMax-yMin))*(h-PAD.top-PAD.bottom);
+  return [px, py];
+}
+
+function drawAxes(ctx, w, h, xMin, xMax, yMin, yMax, xLabel, yLabel) {
+  // Background
+  ctx.fillStyle = '#FFF8F0'; ctx.fillRect(0,0,w,h);
+  // Horizontal grid rules (FT style — subtle lines)
+  const nyTicks = 5;
+  for (let i=0; i<=nyTicks; i++) {
+    const yv = yMin + i*(yMax-yMin)/nyTicks;
+    const [, py] = worldToCanvas(xMin, yv, xMin, xMax, yMin, yMax, w, h);
+    ctx.strokeStyle = i===0 ? '#1A1A1A' : '#D9C9B0';
+    ctx.lineWidth = i===0 ? 1.2 : 0.5;
+    ctx.beginPath(); ctx.moveTo(PAD.left, py); ctx.lineTo(w-PAD.right, py); ctx.stroke();
+    ctx.fillStyle = '#6B5E4E'; ctx.font = '10px "Source Serif 4", Georgia, serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(yv.toPrecision(2), PAD.left-5, py+3);
+  }
+  // X axis line
+  ctx.strokeStyle = '#1A1A1A'; ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, h-PAD.bottom);
+  ctx.lineTo(w-PAD.right, h-PAD.bottom);
+  ctx.stroke();
+  // Left axis line
+  ctx.beginPath(); ctx.moveTo(PAD.left, PAD.top); ctx.lineTo(PAD.left, h-PAD.bottom); ctx.stroke();
+
+  // X ticks
+  const nxTicks = 6;
+  ctx.fillStyle = '#6B5E4E'; ctx.font = '10px "Source Serif 4", Georgia, serif';
+  for (let i=0; i<=nxTicks; i++) {
+    const xv = xMin + i*(xMax-xMin)/nxTicks;
+    const [px] = worldToCanvas(xv, yMin, xMin, xMax, yMin, yMax, w, h);
+    ctx.textAlign = 'center';
+    ctx.fillText(xv.toPrecision(3), px, h-PAD.bottom+13);
+    if (i>0 && i<nxTicks) {
+      ctx.strokeStyle='#D9C9B0'; ctx.lineWidth=0.4;
+      ctx.beginPath(); ctx.moveTo(px, PAD.top); ctx.lineTo(px, h-PAD.bottom); ctx.stroke();
+    }
+  }
+  // Axis labels
+  ctx.fillStyle = '#1A1A1A';
+  ctx.font = 'italic 11px "Source Serif 4", Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(xLabel, PAD.left + (w-PAD.left-PAD.right)/2, h-4);
+  ctx.save(); ctx.translate(11, PAD.top + (h-PAD.top-PAD.bottom)/2);
+  ctx.rotate(-Math.PI/2); ctx.fillText(yLabel, 0, 0); ctx.restore();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CDF plot
+// ─────────────────────────────────────────────────────────────────────────────
+function drawCDF(d) {
+  const {ctx, w, h} = setupCanvas('cdfCanvas');
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#FFF8F0'; ctx.fillRect(0,0,w,h);
+
+  const paramSets = posteriorSamples;
+  if (!paramSets || paramSets.length === 0) return;
+
+  // Determine x range from support of posterior mean params
+  const meanParams = {};
+  DISTS[currentDist].keys.forEach(k => {
+    meanParams[k] = mean(paramSets.map(s=>s[k]));
+  });
+  const [xLo, xHi] = d.support(meanParams);
+  // Widen to contain observations
+  let xMin = xLo, xMax = xHi;
+  observations.forEach(o => { if(o.val < xMin) xMin=o.val*0.9; if(o.val > xMax) xMax=o.val*1.1; });
+
+  const N = 200;
+  const xs = Array.from({length:N}, (_,i) => xMin + i*(xMax-xMin)/(N-1));
+
+  // Credible band: 2.5th and 97.5th percentile of CDF
+  const cdfs = xs.map(x => {
+    const vals = paramSets.map(s => {
+      const p={}; d.keys.forEach(k=>p[k]=s[k]); return d.cdf(x,p);
+    });
+    return {lo: quantile(vals,0.025), med: quantile(vals,0.5), hi: quantile(vals,0.975)};
+  });
+
+  drawAxes(ctx, w, h, xMin, xMax, 0, 1, 'x', 'CDF  F(x)');
+
+  // Credible band
+  ctx.beginPath();
+  xs.forEach((x,i) => {
+    const [px,py] = worldToCanvas(x,cdfs[i].hi,xMin,xMax,0,1,w,h);
+    i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+  });
+  for (let i=N-1;i>=0;i--) {
+    const [px,py] = worldToCanvas(xs[i],cdfs[i].lo,xMin,xMax,0,1,w,h);
+    ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  ctx.fillStyle='rgba(90,143,143,0.18)'; ctx.fill();
+
+  // Median CDF line
+  ctx.beginPath();
+  xs.forEach((x,i) => {
+    const [px,py] = worldToCanvas(x,cdfs[i].med,xMin,xMax,0,1,w,h);
+    i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+  });
+  ctx.strokeStyle='#5A8F8F'; ctx.lineWidth=2.2; ctx.stroke();
+
+  // Observation points — dusty rose filled circles
+  observations.forEach(o => {
+    const [px,py] = worldToCanvas(o.val, o.pct/100, xMin, xMax, 0, 1, w, h);
+    ctx.beginPath(); ctx.arc(px,py,5,0,2*Math.PI);
+    ctx.fillStyle='#D4785A'; ctx.fill();
+    ctx.strokeStyle='#FFF8F0'; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.fillStyle='#1A1A1A'; ctx.font='9.5px "Source Serif 4", serif'; ctx.textAlign='left';
+    ctx.fillText(`(${o.val}, ${o.pct}%)`, px+8, py-3);
+  });
+
+  // Legend (FT-style, top left)
+  const lx = PAD.left+10, ly = PAD.top+10;
+  ctx.fillStyle='#5A8F8F'; ctx.fillRect(lx, ly, 16, 2.5);
+  ctx.fillStyle='#1A1A1A'; ctx.font='10px "Source Serif 4", serif'; ctx.textAlign='left';
+  ctx.fillText('Posterior median', lx+20, ly+3);
+  ctx.fillStyle='rgba(90,143,143,0.25)'; ctx.fillRect(lx, ly+12, 16, 7);
+  ctx.fillStyle='#1A1A1A'; ctx.fillText('95% credible band', lx+20, ly+18);
+  ctx.beginPath(); ctx.arc(lx+8, ly+32, 4,0,2*Math.PI); ctx.fillStyle='#D4785A'; ctx.fill();
+  ctx.fillStyle='#1A1A1A'; ctx.fillText('Observed quantiles', lx+20, ly+35);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PDF plot  (axis-override aware)
+// ─────────────────────────────────────────────────────────────────────────────
+function getPDFAxisOverride() {
+  const xMinV = parseFloat(document.getElementById('pdfXmin').value);
+  const xMaxV = parseFloat(document.getElementById('pdfXmax').value);
+  const yMaxV = parseFloat(document.getElementById('pdfYmax').value);
+  return {
+    xMin: isNaN(xMinV) ? null : xMinV,
+    xMax: isNaN(xMaxV) ? null : xMaxV,
+    yMax: isNaN(yMaxV) ? null : yMaxV
+  };
+}
+function resetPDFAxes() {
+  document.getElementById('pdfXmin').value = '';
+  document.getElementById('pdfXmax').value = '';
+  document.getElementById('pdfYmax').value = '';
+  if (posteriorSamples) drawPDF(DISTS[currentDist]);
+}
+function redrawPDF() {
+  if (posteriorSamples) drawPDF(DISTS[currentDist]);
+}
+function drawPDF(d) {
+  const {ctx, w, h} = setupCanvas('pdfCanvas');
+  ctx.clearRect(0,0,w,h);
+
+  const paramSets = posteriorSamples;
+  if (!paramSets || paramSets.length === 0) return;
+
+  const meanParams = {};
+  d.keys.forEach(k => { meanParams[k] = mean(paramSets.map(s=>s[k])); });
+  const [xLo, xHi] = d.support(meanParams);
+
+  const ov = getPDFAxisOverride();
+  let xMin = ov.xMin !== null ? ov.xMin : xLo;
+  let xMax = ov.xMax !== null ? ov.xMax : xHi;
+  observations.forEach(o => {
+    if (ov.xMin === null && o.val < xMin) xMin = o.val * 0.9;
+    if (ov.xMax === null && o.val > xMax) xMax = o.val * 1.1;
+  });
+  if (xMin >= xMax) xMax = xMin + 1;
+
+  const N = 200;
+  const xs = Array.from({length:N}, (_,i) => xMin + i*(xMax-xMin)/(N-1));
+
+  const pdfs = xs.map(x => {
+    const vals = paramSets.map(s => {
+      const p={}; d.keys.forEach(k=>p[k]=s[k]); const v=d.pdf(x,p); return isFinite(v)?v:0;
+    });
+    return {lo: quantile(vals,0.025), med: quantile(vals,0.5), hi: quantile(vals,0.975)};
+  });
+
+  const autoYmax = Math.max(...pdfs.map(v => v.hi)) * 1.1;
+  const yMax = ov.yMax !== null ? ov.yMax : autoYmax;
+
+  drawAxes(ctx, w, h, xMin, xMax, 0, yMax, 'x', 'f(x)  density');
+
+  // Credible band — golden mustard
+  ctx.beginPath();
+  xs.forEach((x,i) => {
+    const [px,py] = worldToCanvas(x,pdfs[i].hi,xMin,xMax,0,yMax,w,h);
+    i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+  });
+  for(let i=N-1;i>=0;i--) {
+    const[px,py]=worldToCanvas(xs[i],Math.min(pdfs[i].lo, yMax),xMin,xMax,0,yMax,w,h);
+    ctx.lineTo(px,py);
+  }
+  ctx.closePath(); ctx.fillStyle='rgba(201,149,42,0.18)'; ctx.fill();
+
+  // Median line — dark
+  ctx.beginPath();
+  xs.forEach((x,i) => {
+    const yv = Math.min(pdfs[i].med, yMax);
+    const [px,py]=worldToCanvas(x,yv,xMin,xMax,0,yMax,w,h);
+    i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+  });
+  ctx.strokeStyle='#1A1A1A'; ctx.lineWidth=2; ctx.stroke();
+
+  // Vertical markers at observation x-values — terracotta dashed
+  observations.forEach(o => {
+    if (o.val < xMin || o.val > xMax) return;
+    const[px]=worldToCanvas(o.val,0,xMin,xMax,0,yMax,w,h);
+    ctx.strokeStyle='#D4785A'; ctx.lineWidth=1.2;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(px,PAD.top); ctx.lineTo(px,h-PAD.bottom); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Legend
+  const lx = PAD.left+10, ly = PAD.top+10;
+  ctx.fillStyle='#1A1A1A'; ctx.fillRect(lx, ly, 16, 2.5);
+  ctx.font='10px "Source Serif 4", serif'; ctx.textAlign='left';
+  ctx.fillText('Posterior median', lx+20, ly+3);
+  ctx.fillStyle='rgba(201,149,42,0.22)'; ctx.fillRect(lx, ly+12, 16, 7);
+  ctx.fillStyle='#1A1A1A'; ctx.fillText('95% credible band', lx+20, ly+18);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trace plots
+// ─────────────────────────────────────────────────────────────────────────────
+function drawTrace(priors) {
+  const {ctx, w, h} = setupCanvas('traceCanvas');
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#FFF8F0'; ctx.fillRect(0,0,w,h);
+
+  const np = priors.length;
+  const rowH = (h - 20) / np;
+  // Wes Anderson colours per param
+  const colors = ['#5A8F8F','#D4785A','#C9952A','#8A7AAA','#6A9E7F'];
+
+  priors.forEach((p, pi) => {
+    const vals = posteriorSamples.map(s=>s[p.key]);
+    const yMin = Math.min(...vals), yMax = Math.max(...vals);
+    const yRange = yMax - yMin || 1;
+    const pad = yRange * 0.1;
+    const y0 = 20 + pi*rowH, y1 = y0 + rowH - 8;
+
+    // Row background
+    ctx.fillStyle = pi%2===0 ? '#FFF8F0' : '#FFF1E0';
+    ctx.fillRect(PAD.left, y0, w-PAD.left-PAD.right, y1-y0);
+
+    ctx.fillStyle='#6B5E4E'; ctx.font='italic 10px "Source Serif 4", serif'; ctx.textAlign='left';
+    ctx.fillText(p.key, 4, y0+12);
+
+    const step = Math.max(1, Math.floor(vals.length/1000));
+    ctx.beginPath();
+    for (let i=0; i < vals.length; i+=step) {
+      const px = PAD.left + (i/vals.length)*(w-PAD.left-PAD.right);
+      const py = y1 - (vals[i]-yMin+pad/2)/(yRange+pad)*(y1-y0-4);
+      i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle=colors[pi%colors.length]; ctx.lineWidth=0.8; ctx.stroke();
+
+    // Mean line
+    const m = mean(vals);
+    const my = y1 - (m-yMin+pad/2)/(yRange+pad)*(y1-y0-4);
+    ctx.strokeStyle='rgba(26,26,26,0.35)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(PAD.left,my); ctx.lineTo(w-PAD.right,my); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Bottom axis label
+  ctx.fillStyle='#6B5E4E'; ctx.font='italic 10px "Source Serif 4", serif'; ctx.textAlign='center';
+  ctx.fillText('Posterior sample index →', w/2, h-4);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Posterior histograms
+// ─────────────────────────────────────────────────────────────────────────────
+function drawPosteriorHist(priors) {
+  const {ctx, w, h} = setupCanvas('postCanvas');
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#FFF8F0'; ctx.fillRect(0,0,w,h);
+
+  const np = priors.length;
+  const colW = (w - 20) / np;
+  const colors = ['#5A8F8F','#D4785A','#C9952A','#8A7AAA','#6A9E7F'];
+
+  priors.forEach((p, pi) => {
+    const vals = posteriorSamples.map(s=>s[p.key]);
+    const vMin = quantile(vals,0.005), vMax = quantile(vals,0.995);
+    const nBins = 30;
+    const binW_v = (vMax-vMin)/nBins;
+    const counts = new Array(nBins).fill(0);
+    vals.forEach(v => {
+      const b = Math.min(nBins-1, Math.floor((v-vMin)/binW_v));
+      if(b>=0) counts[b]++;
+    });
+    const maxCount = Math.max(...counts);
+
+    const x0 = 10 + pi*colW, x1 = x0 + colW - 10;
+    const y1 = h-34, y0 = 28;
+    const bw = (x1-x0)/nBins;
+
+    // Axes
+    ctx.strokeStyle='#1A1A1A'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x0,y1); ctx.lineTo(x1,y1); ctx.stroke();
+
+    // Bars
+    counts.forEach((c, bi) => {
+      const bx = x0 + bi*bw;
+      const barH = (c/maxCount)*(y1-y0);
+      ctx.fillStyle=colors[pi%colors.length];
+      ctx.globalAlpha=0.78;
+      ctx.fillRect(bx+0.5, y1-barH, bw-1.5, barH);
+      ctx.globalAlpha=1;
+    });
+
+    // Param label
+    const idx = DISTS[currentDist].keys.indexOf(p.key);
+    const pname = DISTS[currentDist].params[idx] || p.key;
+    ctx.fillStyle='#1A1A1A'; ctx.font='italic 10px "Source Serif 4", serif'; ctx.textAlign='center';
+    ctx.fillText(pname, (x0+x1)/2, h-14);
+
+    // x ticks
+    [vMin, (vMin+vMax)/2, vMax].forEach(v => {
+      const px = x0 + (v-vMin)/(vMax-vMin)*(x1-x0);
+      ctx.fillStyle='#6B5E4E'; ctx.font='9px "Source Serif 4", serif'; ctx.textAlign='center';
+      ctx.fillText(v.toPrecision(3), px, y1+12);
+    });
+
+    // Mean marker + 95% CI bar
+    const m  = mean(vals);
+    const lo = quantile(vals,0.025), hi_v = quantile(vals,0.975);
+    const mpx  = x0 + (m   -vMin)/(vMax-vMin)*(x1-x0);
+    const lopx = x0 + (lo  -vMin)/(vMax-vMin)*(x1-x0);
+    const hipx = x0 + (hi_v-vMin)/(vMax-vMin)*(x1-x0);
+    ctx.strokeStyle='#1A1A1A'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(mpx,y0); ctx.lineTo(mpx,y0+12); ctx.stroke();
+    ctx.strokeStyle='rgba(26,26,26,0.4)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(lopx,(y0+y1)/2); ctx.lineTo(hipx,(y0+y1)/2); ctx.stroke();
+    ctx.fillStyle='#1A1A1A'; ctx.font='9px "Source Serif 4", serif'; ctx.textAlign='center';
+    ctx.fillText(`μ=${m.toPrecision(3)}`, (x0+x1)/2, y0-6);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+onDistChange();
+['cdfCanvas','pdfCanvas','traceCanvas','postCanvas'].forEach(id => drawPlaceholder(id, 'Add observations and run fit'));
+log('Functional Form Fitter ready.');
+log('1. Add cumulative observations (e.g. P(X ≤ 7) = 95%)');
+log('2. Choose a distribution family');
+log('3. Optionally adjust priors');
+log('4. Click “Run Bayesian Fit”');
+</script>
+</body>
+</html>
