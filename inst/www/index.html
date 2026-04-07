@@ -96,10 +96,10 @@
     height: 100%;
   }
   .right-col {
-    padding: 20px 28px;
+    padding: 12px 20px;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 10px;
     overflow-y: auto;
     height: 100%;
   }
@@ -216,7 +216,7 @@
   .right-card {
     background: var(--card);
     border: 1px solid var(--border);
-    padding: 16px 20px;
+    padding: 10px 16px;
   }
 </style>
 </head>
@@ -323,7 +323,7 @@
     </div>
 
     <div id="tabCDF" class="tab-pane active">
-      <canvas id="cdfCanvas" height="220"></canvas>
+      <canvas id="cdfCanvas" height="160"></canvas>
     </div>
     <div id="tabPDF" class="tab-pane">
       <div class="axis-controls">
@@ -335,13 +335,13 @@
         <input type="number" id="pdfYmax" step="any" placeholder="auto" min="0" oninput="redrawPDF()"/>
         <button class="btn-sm" onclick="resetPDFAxes()">Reset</button>
       </div>
-      <canvas id="pdfCanvas" height="220"></canvas>
+      <canvas id="pdfCanvas" height="160"></canvas>
     </div>
     <div id="tabTrace" class="tab-pane">
-      <canvas id="traceCanvas" height="220"></canvas>
+      <canvas id="traceCanvas" height="160"></canvas>
     </div>
     <div id="tabPosterior" class="tab-pane">
-      <canvas id="postCanvas" height="220"></canvas>
+      <canvas id="postCanvas" height="160"></canvas>
     </div>
   </div>
 
